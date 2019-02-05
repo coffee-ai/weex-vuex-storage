@@ -1,9 +1,9 @@
 {
   "name": "weex-vuex-storage",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "",
   "main": "index.js",
-  "module": "lib/index.js",
+  "module": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "webpack --display-error-details --config webpack.conf.js"
@@ -18,12 +18,12 @@
   "dependencies": {
     "deepmerge": "^3.1.0",
     "object.fromentries": "^2.0.0",
+    "promise": "^8.0.2",
     "vuex": "^3.1.0"
   },
   "devDependencies": {
     "babel-core": "^6.26.3",
     "babel-loader": "^7.1.5",
-    "babel-plugin-transform-runtime": "^6.23.0",
     "babel-preset-env": "^1.7.0",
     "babel-preset-stage-0": "^6.24.1",
     "uglifyjs-webpack-plugin": "^2.1.1",

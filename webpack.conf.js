@@ -1,9 +1,17 @@
 const path = require('path')
 const webpack = require('webpack')
 const UglifyJsPlugin = require('uglifyjs-webpack-plugin')
+const {dependencies} = require('./package.json')
 
 function resolve (dir) {
   return path.join(__dirname, dir)
+}
+function getExternals() {
+  const externals = {};
+  Object.keys(dependencies).forEach(key => {
+    externals[key] = key;
+  });
+  return externals;
 }
 
 module.exports = {
@@ -26,6 +34,7 @@ module.exports = {
       '@': resolve('packages')
     }
   },
+  externals: getExternals(),
   module: {
     rules: [
       {

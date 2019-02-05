@@ -2,8 +2,11 @@ import {Store} from 'vuex';
 import fromEntries from 'object.fromentries';
 import merge from 'deepmerge';
 import {registerInterceptor, runInterceptor} from './src/intercept';
+import Promise from 'promise/lib/es6-extensions';
 
 let rootKey = 'storage';
+
+const moduleWeakMap = new WeakMap();
 
 const storage = (() => {
   if (typeof weex !== 'undefined') {
@@ -40,6 +43,7 @@ const storage = (() => {
       localStorage,
       {
         get: function(target, prop) {
+          const fn = target[prop];
           return function(...args) {
             const rst = fn.apply(localStorage, args);
             return Promise.resolve(rst);
@@ -61,6 +65,27 @@ const parseJSON = str => {
   return undefined;
 };
 
+const getStateData = async function getModuleState(module, path = []) {
+  const moduleKey = `${path.join('/')}/`;
+  const {_children, context} = module;
+  const {commit} = context || {};
+  moduleWeakMap.set(commit, {module, moduleKey});
+  const data = parseJSON(await storage.getItem(moduleKey)) || {};
+  const children = Object.entries(_children);
+  if (!children.length) {
+    return data;
+  }
+  const childModules = await Promise.all(
+    children.map(async ([childKey, child]) => {
+      return [childKey, await getModuleState(child, path.concat(childKey))];
+    })
+  );
+  return {
+    ...data,
+    ...fromEntries(childModules),
+  }
+};
+
 export const setState = (target, name, descriptor) => {
   const fn = descriptor.value;
   descriptor.value = function(...args) {
@@ -70,18 +95,14 @@ export const setState = (target, name, descriptor) => {
       throw new Error(`setState must decorate a promise function`);
     }
     return oldValue.then(async data => {
-      // TODO 无法通过_modulesNamespaceMap获取namespaced为false的module，需改为遍历_children
-      const rawModule = Object.entries(this._modulesNamespaceMap);
-      const moduleMap = rawModule.find(([, module]) => {
-        return module.context.commit === commit;
-      });
-      if (moduleMap) {
-        const [key, {_children}] = moduleMap;
+      const {module, moduleKey} = moduleWeakMap.get(commit) || {};
+      if (module) {
+        const {_children} = module;
         const childrenKeys = Object.keys(_children);
         const pureState = fromEntries(Object.entries(state).filter(([stateKey]) => {
             return !childrenKeys.some(childKey => childKey === stateKey);
         }));
-        await storage.setItem(`${rootKey}/${key}`, JSON.stringify(pureState));
+        await storage.setItem(moduleKey, JSON.stringify(pureState));
       }
       return data;
     });
@@ -93,23 +114,6 @@ export const createStatePlugin = (option = {}) => {
   const {key, intercept = registerInterceptor} = option;
   key && (rootKey = key);
   return (store) => {
-    const getStateData = async function getModuleState(module, path = []) {
-      const {_children} = module;
-      const data = parseJSON(await storage.getItem(`${path.join('/')}/`)) || {};
-      const children = Object.entries(_children);
-      if (!children.length) {
-        return data;
-      }
-      const childModules = await Promise.all(
-        children.map(async ([childKey, child]) => {
-          return [childKey, await getModuleState(child, path.concat(childKey))];
-        })
-      );
-      return {
-        ...data,
-        ...fromEntries(childModules),
-      }
-    };
     const init = getStateData(store._modules.root, [rootKey]).then(savedState => {
       store.replaceState(merge(store.state, savedState, {
         arrayMerge: function (store, saved) { return saved },
