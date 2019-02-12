@@ -1,7 +1,7 @@
 const path = require('path')
 const webpack = require('webpack')
 const UglifyJsPlugin = require('uglifyjs-webpack-plugin')
-const {dependencies} = require('./package.json')
+const {dependencies, devDependencies} = require('./package.json')
 
 function resolve (dir) {
   return path.join(__dirname, dir)
