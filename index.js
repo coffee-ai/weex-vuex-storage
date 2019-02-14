@@ -64,11 +64,13 @@ const parseJSON = str => {
   return undefined;
 };
 
-const getStateData = async function getModuleState(module, path = []) {
+const getStateData = async function getModuleState(module, path = [], setMap = false) {
   const moduleKey = `${path.join('/')}/`;
   const {_children, context} = module;
-  const {commit} = context || {};
-  moduleWeakMap.set(commit, {module, moduleKey});
+  if (setMap) {
+    const {commit} = context || {};
+    moduleWeakMap.set(commit, {module, moduleKey});
+  }
   const data = parseJSON(await storage.getItem(moduleKey)) || {};
   const children = Object.entries(_children);
   if (!children.length) {
@@ -76,13 +78,39 @@ const getStateData = async function getModuleState(module, path = []) {
   }
   const childModules = await Promise.all(
     children.map(async ([childKey, child]) => {
-      return [childKey, await getModuleState(child, path.concat(childKey))];
+      return [childKey, await getModuleState(child, path.concat(childKey), setMap)];
     })
   );
   return {
     ...data,
     ...fromEntries(childModules),
   }
+};
+
+export const getState = async ({commit, namespace, store}) => {
+  if (typeof namespace === 'string' && store) {
+    let module;
+    if (namespace === '') {
+      module = store._modules.root;
+    } else {
+      module = store._modulesNamespaceMap[namespace];
+    }
+    if (module) {
+      const path = [
+        rootKey,
+        ...namespace.split('/').filter(a => a)
+      ];
+      return getStateData(module, path);
+    }
+  }
+  if (typeof commit === 'function') {
+    const {module, moduleKey} = moduleWeakMap.get(commit) || {};
+    if (moduleKey) {
+      const path = moduleKey.split('/').filter(a => a);
+      return getStateData(module, path);
+    }
+  }
+  return undefined;
 };
 
 export const setState = (target, name, descriptor) => {
@@ -113,7 +141,7 @@ export const createStatePlugin = (option = {}) => {
   const {key, intercept = registerInterceptor} = option;
   key && (rootKey = key);
   return function(store) {
-    const init = getStateData(store._modules.root, [rootKey]).then(savedState => {
+    const init = getStateData(store._modules.root, [rootKey], true).then(savedState => {
       store.replaceState(merge(store.state, savedState, {
         arrayMerge: function (store, saved) { return saved },
         clone: false,

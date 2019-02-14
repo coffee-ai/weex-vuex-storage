@@ -1,5 +1,7 @@
 # weex-vuex-storage
 
+依据Vuex的module来存储数据到storage
+
 ## install
 
 ```
@@ -32,6 +34,22 @@ const module = {
     someActions({commit}) {
 
     }
+  }
+}
+```
+
+**view.vue**
+```javascript
+import {getState} from 'weex-vuex-storage';
+export default {
+  methods: {
+    // module A storage data
+    getState({
+      namespace: 'A/',
+      store: this.$store
+    }).then(state => {
+      console.log(state);
+    })
   }
 }
 ```
