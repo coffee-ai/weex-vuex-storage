@@ -23,8 +23,8 @@ module.exports = {
     publicPath: resolve('lib'),
     filename: '[name].js',
     chunkFilename: '[name]/index.js',
-    libraryTarget: 'umd',
-    umdNamedDefine: true
+    libraryTarget: 'commonjs',
+    // umdNamedDefine: true
   },
   mode: 'production',
   resolve: {
@@ -51,7 +51,7 @@ module.exports = {
       new UglifyJsPlugin({
         uglifyOptions: {
           warning: false,
-          mangle: true,
+          mangle: true
         },
         extractComments: false,
         sourceMap: false,

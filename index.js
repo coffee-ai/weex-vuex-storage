@@ -1,4 +1,3 @@
-import {Store} from 'vuex';
 import fromEntries from 'object.fromentries';
 import merge from 'deepmerge';
 import {registerInterceptor, runInterceptor} from './src/intercept';
@@ -108,12 +107,12 @@ export const setState = (target, name, descriptor) => {
     });
   };
   return descriptor;
-}
+};
 
 export const createStatePlugin = (option = {}) => {
   const {key, intercept = registerInterceptor} = option;
   key && (rootKey = key);
-  return (store) => {
+  return function(store) {
     const init = getStateData(store._modules.root, [rootKey]).then(savedState => {
       store.replaceState(merge(store.state, savedState, {
         arrayMerge: function (store, saved) { return saved },
@@ -122,6 +121,6 @@ export const createStatePlugin = (option = {}) => {
     }).catch(() => {});
     intercept(init);
   };
-}
+};
 
-export const startApp = runInterceptor
+export const startApp = runInterceptor;
