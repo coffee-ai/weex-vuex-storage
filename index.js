@@ -1,11 +1,17 @@
 import fromEntries from 'object.fromentries';
-import merge from 'deepmerge';
 import {registerInterceptor, runInterceptor} from './src/intercept';
 import Promise from 'promise/lib/es6-extensions';
+import defaultIsMergeableObject from 'is-mergeable-object'
 
 let rootKey = 'storage';
 
+const USE_WHITE_TAG = 1;
+const USE_BLACK_TAG = 2;
+
 const moduleWeakMap = new WeakMap();
+const hashTagMap = new WeakMap();
+// 存储storage对象的黑白名单
+const descriptorSet = new WeakSet();
 
 const storage = (() => {
   if (typeof weex !== 'undefined') {
@@ -13,7 +19,7 @@ const storage = (() => {
       weex.requireModule('storage'),
       {
         get: function(target, prop) {
-          const fn = target[prop];
+          const fn = Reflect.get(target, prop);
           if ([
             'getItem',
             'setItem',
@@ -42,7 +48,7 @@ const storage = (() => {
       localStorage,
       {
         get: function(target, prop) {
-          const fn = target[prop];
+          const fn = Reflect.get(target, prop);
           return function(...args) {
             const rst = fn.apply(localStorage, args);
             return Promise.resolve(rst);
@@ -62,6 +68,36 @@ const parseJSON = str => {
     return str ? JSON.parse(str) : undefined;
   } catch (e) {}
   return undefined;
+};
+
+const defaultArrayMerge = (target, source) => source;
+
+const mergeObject = (target, source, options) => {
+  Object.keys(source).forEach(key => {
+    if (!options.isMergeableObject(source[key]) || !target[key]) {
+      target[key] = source[key];
+    } else {
+      target[key] = merge(target[key], source[key], options);
+    }
+  })
+  return target
+};
+const merge = (target, source, options) => {
+  options = options || {}
+  options.arrayMerge = options.arrayMerge || defaultArrayMerge
+  options.isMergeableObject = options.isMergeableObject || defaultIsMergeableObject
+
+  const sourceIsArray = Array.isArray(source)
+  const targetIsArray = Array.isArray(target)
+  const sourceAndTargetTypesMatch = sourceIsArray === targetIsArray
+
+  if (!sourceAndTargetTypesMatch) {
+    return source;
+  } else if (sourceIsArray) {
+    return options.arrayMerge(target, source, options)
+  } else {
+    return mergeObject(target, source, options)
+  }
 };
 
 const getStateData = async function getModuleState(module, path = [], setMap = false) {
@@ -86,6 +122,36 @@ const getStateData = async function getModuleState(module, path = [], setMap = f
     ...fromEntries(childModules),
   }
 };
+
+const descriptorFactory = (USE_TAG) => (target, name) => {
+  if (!hashTagMap.has(target)) {
+    hashTagMap.set(target, USE_TAG);
+  } else {
+    let tag = hashTagMap.get(target);
+    tag = tag | USE_TAG; // 启用黑白名单标志
+    if (tag & USE_WHITE_TAG && tag & USE_BLACK_TAG) {
+      throw new Error('can\'t set blacklist and whitelist at the same time in one module');
+    }
+  }
+  let value = target[name];
+  return {
+    enumerable: true,
+    configurable: true,
+    get: function() {
+      const {get: getter} = Object.getOwnPropertyDescriptor(target, name);
+      if (!descriptorSet.has(getter)) {
+        descriptorSet.add(getter); // 放入Set，setState时判断是否需要存入storage
+      }
+      return value;
+    },
+    set: function(newVal) {
+      value = newVal;
+    }
+  };
+};
+
+export const shouldWrite = descriptorFactory(USE_WHITE_TAG);
+export const forbidWrite = descriptorFactory(USE_BLACK_TAG);
 
 export const getState = async ({commit, namespace, store}) => {
   if (typeof namespace === 'string' && store) {
@@ -126,11 +192,17 @@ export const setState = (target, name, descriptor) => {
       if (module) {
         const {_children} = module;
         const childrenKeys = Object.keys(_children);
+        const descriptors = Object.getOwnPropertyDescriptors(state);
+        const tag = hashTagMap.get(state) || USE_BLACK_TAG; // 默认黑名单
+        const isWhiteTag = tag & USE_WHITE_TAG;
         const pureState = fromEntries(Object.entries(state).filter(([stateKey]) => {
-            return !childrenKeys.some(childKey => childKey === stateKey);
+          const {get: getter} = descriptors[stateKey] || {};
+          return !childrenKeys.some(childKey => childKey === stateKey) 
+            && !((isWhiteTag ^ descriptorSet.has(getter)));
         }));
         await storage.setItem(moduleKey, JSON.stringify(pureState));
       }
+
       return data;
     });
   };

@@ -8,6 +8,9 @@
 npm install weex-vuex-storage -S
 ```
 
+## use
+
+加载vuex插件
 **store.js**
 ```javascript
 import {createStatePlugin} from 'weex-vuex-storage';
@@ -24,11 +27,17 @@ export default new Vuex.Store({
   plugins,
 })
 ```
+
+给action添加修饰器，调用action时存储当前module的state到storage，同时给需要存储的state属性添加到黑白名单，不能在同一个module中同时使用`shouldWrite`和`forbidWrite`
 **module.js**
 ```javascript
-import {setState} from 'weex-vuex-storage';
+import {setState, shouldWrite, forbidWrite} from 'weex-vuex-storage';
 const module = {
   ...
+  state: {
+    @shouldWrite
+    someState: {}
+  },
   actions: {
     @setState,
     someActions({commit}) {
@@ -38,6 +47,8 @@ const module = {
 }
 ```
 
+
+也可以手动获取storage中的数据
 **view.vue**
 ```javascript
 import {getState} from 'weex-vuex-storage';
