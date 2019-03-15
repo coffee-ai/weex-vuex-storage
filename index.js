@@ -202,17 +202,68 @@ export const setState = (target, name, descriptor) => {
         }));
         await storage.setItem(moduleKey, JSON.stringify(pureState));
       }
-
       return data;
     });
   };
   return descriptor;
 };
 
+export const setModuleState = async (store, path) => {
+  const namespace = path.length ? `${path.join('/')}/` : '';
+  const module = store._modulesNamespaceMap[namespace];
+  const newState = await getStateData(module, [rootKey, ...path], true);
+  const setChildModuleState = function setChildModuleState(_module, _state) {
+    const {_children, state} = _module;
+    const childrenKeys = Object.keys(_children);
+    const children = Object.entries(_children);
+    Object.entries(_state).map(([key, value]) => {
+      // 后续看能否将state修改放到mutation里
+      if (childrenKeys.some(a => a !== key)) {
+        state[key] = value;
+      } else {
+        children.forEach(([childKey, child]) => {
+          setChildModuleState(child, _state[childKey]);
+        });
+      }
+    });
+  };
+  setChildModuleState(module, newState);
+};
+
+export const removeModuleState = async (store, path) => {
+  const namespace = path.length ? `${path.join('/')}/` : '';
+  const module = store._modulesNamespaceMap[namespace];
+  const moduleKeys = [];
+  const removeChildModuleState = function removeChildModuleState(_module, _path) {
+    const {_children = {}} = _module;
+    moduleKeys.push(`${_path.join('/')}/`);
+    Object.entries(_children).forEach(([childKey, childModule]) => {
+      removeChildModuleState(childModule, _path.concat(childKey));
+    });
+  };
+  removeChildModuleState(module, [rootKey, ...path]);
+  return Promise.all(moduleKeys.map(async key => {
+    await storage.removeItem(key);
+  }));
+};
+
 export const createStatePlugin = (option = {}) => {
-  const {key, intercept = registerInterceptor} = option;
+  const {key, intercept = registerInterceptor, supportRegister = false} = option;
   key && (rootKey = key);
   return function(store) {
+    if (supportRegister) {
+      const registerModule = store.registerModule;
+      const unregisterModule = store.unregisterModule;
+      store.registerModule = async function(path, rawModule, options) {
+        registerModule.call(store, path, rawModule, options);
+        return setModuleState(store, path);
+      };
+
+      store.unregisterModule = async function(path) {
+        await removeModuleState(store, path);
+        unregisterModule.call(store, path);
+      };
+    }
     const init = getStateData(store._modules.root, [rootKey], true).then(savedState => {
       store.replaceState(merge(store.state, savedState, {
         arrayMerge: function (store, saved) { return saved },
