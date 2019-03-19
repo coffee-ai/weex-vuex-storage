@@ -12,7 +12,7 @@ function getExternals() {
     externals[key] = key;
   });
   return externals;
-}
+};
 
 module.exports = {
   entry: {

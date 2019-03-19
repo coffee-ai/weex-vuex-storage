@@ -1,7 +1,7 @@
 import fromEntries from 'object.fromentries';
 import {registerInterceptor, runInterceptor} from './src/intercept';
 import Promise from 'promise/lib/es6-extensions';
-import defaultIsMergeableObject from 'is-mergeable-object'
+import defaultIsMergeableObject from 'is-mergeable-object';
 
 let rootKey = 'storage';
 
@@ -14,48 +14,26 @@ const hashTagMap = new WeakMap();
 const descriptorSet = new WeakSet();
 
 const storage = (() => {
-  if (typeof weex !== 'undefined') {
-    return new Proxy(
-      weex.requireModule('storage'),
-      {
-        get: function(target, prop) {
-          const fn = Reflect.get(target, prop);
-          if ([
-            'getItem',
-            'setItem',
-          ].some(method => method === prop)) {
-            return function(...args) {
-              const [callback] = args.slice(-1);
-              const innerArgs = typeof callback === 'function' ? args.slice(0, -1) : args;
-              return new Promise((resolve, reject) => {
-                fn.call(target, ...innerArgs, ({result, data}) => {
-                  if (result === 'success') {
-                    return resolve(data);
-                  }
-                  // 防止module无保存state而出现报错
-                  return resolve(result);
-                })
-              })
-            }
+  const _storage = weex.requireModule('storage');
+  const fn = (key) => {
+    return function(...args) {
+      const [callback] = args.slice(-1);
+      const innerArgs = typeof callback === 'function' ? args.slice(0, -1) : args;
+      return new Promise((resolve, reject) => {
+        _storage[key].call(_storage, ...innerArgs, ({result, data}) => {
+          if (result === 'success') {
+            return resolve(data);
           }
-          return fn;
-        }
-      }
-    );
-  } else if (typeof window !== 'undefined' && window.localStorage) {
-    const localStorage = window.localStorage;
-    return new Proxy(
-      localStorage,
-      {
-        get: function(target, prop) {
-          const fn = Reflect.get(target, prop);
-          return function(...args) {
-            const rst = fn.apply(localStorage, args);
-            return Promise.resolve(rst);
-          }
-        }
-      }
-    )
+          // 防止module无保存state而出现报错
+          return resolve(result);
+        })
+      })
+    }
+  };
+  return {
+    getItem: fn('getItem'),
+    setItem: fn('setItem'),
+    removeItem: fn('removeItem'),
   }
 })();
 
