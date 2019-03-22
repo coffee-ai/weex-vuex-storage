@@ -2,6 +2,9 @@ import fromEntries from 'object.fromentries';
 import {registerInterceptor, runInterceptor} from './src/intercept';
 import Promise from 'promise/lib/es6-extensions';
 import defaultIsMergeableObject from 'is-mergeable-object';
+import WeakSet from 'core-js/es6/weak-set';
+import WeakMap from 'core-js/es6/weak-map';
+import getOwnPropertyDescriptors from 'object.getownpropertydescriptors';
 
 let rootKey = 'storage';
 
@@ -139,7 +142,7 @@ const descriptorFactory = (USE_TAG) => (target, name) => {
 export const parseModuleState = (module, state) => {
   const {_children, state: moduleState} = module;
   const childrenKeys = Object.keys(_children);
-  const descriptors = Object.getOwnPropertyDescriptors(moduleState);
+  const descriptors = getOwnPropertyDescriptors(moduleState);
   const tag = hashTagMap.get(moduleState) || USE_BLACK_TAG; // 默认黑名单
   const isWhiteTag = tag & USE_WHITE_TAG;
   const pureState = fromEntries(Object.entries(state).filter(([stateKey]) => {

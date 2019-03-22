@@ -1,6 +1,6 @@
 {
   "name": "weex-vuex-storage",
-  "version": "1.1.6",
+  "version": "1.1.8",
   "description": "",
   "main": "lib/index.js",
   "scripts": {
@@ -25,6 +25,7 @@
   "dependencies": {
     "is-mergeable-object": "^1.1.0",
     "object.fromentries": "^2.0.0",
+    "object.getownpropertydescriptors": "^2.0.3",
     "promise": "^8.0.2",
     "vuex": "^3.1.0"
   },
