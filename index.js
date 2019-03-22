@@ -5,6 +5,7 @@ import defaultIsMergeableObject from 'is-mergeable-object';
 import WeakSet from 'core-js/es6/weak-set';
 import WeakMap from 'core-js/es6/weak-map';
 import getOwnPropertyDescriptors from 'object.getownpropertydescriptors';
+import entries from 'object.entries';
 
 let rootKey = 'storage';
 
@@ -91,7 +92,7 @@ const getStateData = async function getModuleState(module, path = [], setMap = f
     moduleWeakMap.set(commit, {module, moduleKey});
   }
   const data = parseJSON(await storage.getItem(moduleKey)) || {};
-  const children = Object.entries(_children);
+  const children = entries(_children);
   if (!children.length) {
     return data;
   }
@@ -145,7 +146,7 @@ export const parseModuleState = (module, state) => {
   const descriptors = getOwnPropertyDescriptors(moduleState);
   const tag = hashTagMap.get(moduleState) || USE_BLACK_TAG; // 默认黑名单
   const isWhiteTag = tag & USE_WHITE_TAG;
-  const pureState = fromEntries(Object.entries(state).filter(([stateKey]) => {
+  const pureState = fromEntries(entries(state).filter(([stateKey]) => {
     const {get: getter} = descriptors[stateKey] || {};
     return !childrenKeys.some(childKey => childKey === stateKey) 
       && !((isWhiteTag ^ descriptorSet.has(getter)));
@@ -211,7 +212,7 @@ export const replaceModuleState = async function replaceModuleState(module, path
   if (module) {
     const pureState = parseModuleState(module, newState);
     await storage.setItem(normalizeNamespace([rootKey, ...path]), JSON.stringify(pureState));
-    return Promise.all(Object.entries(module._children).map(async ([childKey, child]) => {
+    return Promise.all(entries(module._children).map(async ([childKey, child]) => {
       return await replaceModuleState(child, [...path, childKey], newState[childKey] || {});
     }));
   }
@@ -227,7 +228,7 @@ export const setModuleState = async (store, path, newState) => {
   const setChildModuleState = function setChildModuleState(_module, _state) {
     const {_children, state} = _module;
     const childrenKeys = Object.keys(_children);
-    Object.entries(_state).map(([key, value]) => {
+    entries(_state).map(([key, value]) => {
       // 后续看能否将state修改放到mutation里
       if (childrenKeys.every(a => a !== key)) {
         state[key] = value;
@@ -246,7 +247,7 @@ export const removeModuleState = async (store, path) => {
   const removeChildModuleState = function removeChildModuleState(_module, _path) {
     const {_children = {}} = _module;
     moduleKeys.push(normalizeNamespace(path));
-    Object.entries(_children).forEach(([childKey, childModule]) => {
+    entries(_children).forEach(([childKey, childModule]) => {
       removeChildModuleState(childModule, _path.concat(childKey));
     });
   };
