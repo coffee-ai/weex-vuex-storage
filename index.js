@@ -193,15 +193,12 @@ export const setModuleState = async (store, path) => {
   const setChildModuleState = function setChildModuleState(_module, _state) {
     const {_children, state} = _module;
     const childrenKeys = Object.keys(_children);
-    const children = Object.entries(_children);
     Object.entries(_state).map(([key, value]) => {
       // 后续看能否将state修改放到mutation里
-      if (childrenKeys.some(a => a !== key)) {
+      if (childrenKeys.every(a => a !== key)) {
         state[key] = value;
-      } else {
-        children.forEach(([childKey, child]) => {
-          setChildModuleState(child, _state[childKey]);
-        });
+      } else if (_children[key]) {
+        setChildModuleState(_children[key], _state[key]);
       }
     });
   };
