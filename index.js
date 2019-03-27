@@ -84,13 +84,9 @@ const merge = (target, source, options) => {
   }
 };
 
-const getStateData = async function getModuleState(module, path = [], setMap = false) {
-  const moduleKey = normalizeNamespace(path);
-  const {_children, context} = module;
-  if (setMap) {
-    const {commit} = context || {};
-    moduleWeakMap.set(commit, {module, moduleKey});
-  }
+const getStateData = async function getModuleState(module, storagePath = []) {
+  const moduleKey = normalizeNamespace(storagePath);
+  const {_children} = module;
   const data = parseJSON(await storage.getItem(moduleKey)) || {};
   const children = entries(_children);
   if (!children.length) {
@@ -98,7 +94,7 @@ const getStateData = async function getModuleState(module, path = [], setMap = f
   }
   const childModules = await Promise.all(
     children.map(async ([childKey, child]) => {
-      return [childKey, await getModuleState(child, path.concat(childKey), setMap)];
+      return [childKey, await getModuleState(child, storagePath.concat(childKey))];
     })
   );
   return {
@@ -132,6 +128,16 @@ const descriptorFactory = (USE_TAG) => (target, name) => {
       value = newVal;
     }
   };
+};
+
+export const parseModuleCommit = (module, storagePath) => {
+  const moduleKey = normalizeNamespace(storagePath);
+  const {_children, context} = module;
+  const {commit} = context || {};
+  moduleWeakMap.set(commit, {module, moduleKey});
+  entries(_children).forEach(([childKey, child]) => {
+    parseModuleCommit(child, storagePath.concat(childKey));
+  });
 };
 
 /**
@@ -224,7 +230,9 @@ export const replaceModuleState = async function replaceModuleState(module, path
 export const setModuleState = async (store, path, newState) => {
   const namespace = path.length ? normalizeNamespace(path) : '';
   const module = store._modulesNamespaceMap[namespace];
-  newState = newState || await getStateData(module, [rootKey, ...path], true);
+  // 收集commit与module的映射关系
+  parseModuleCommit(module, [rootKey, ...path]);
+  newState = newState || await getStateData(module, [rootKey, ...path]);
   const setChildModuleState = function setChildModuleState(_module, _state) {
     const {_children, state} = _module;
     const childrenKeys = Object.keys(_children);
@@ -244,11 +252,11 @@ export const removeModuleState = async (store, path) => {
   const namespace = path.length ? normalizeNamespace(path) : '';
   const module = store._modulesNamespaceMap[namespace];
   const moduleKeys = [];
-  const removeChildModuleState = function removeChildModuleState(_module, _path) {
+  const removeChildModuleState = function removeChildModuleState(_module, storagePath) {
     const {_children = {}} = _module;
-    moduleKeys.push(normalizeNamespace(path));
+    moduleKeys.push(normalizeNamespace(storagePath));
     entries(_children).forEach(([childKey, childModule]) => {
-      removeChildModuleState(childModule, _path.concat(childKey));
+      removeChildModuleState(childModule, storagePath.concat(childKey));
     });
   };
   removeChildModuleState(module, [rootKey, ...path]);
@@ -279,9 +287,13 @@ export const createStatePlugin = (option = {}) => {
       store.unregisterModule = async function(path) {
         await removeModuleState(store, path);
         unregisterModule.call(store, path);
+        // unregisterModule会调用resetStore，导致各module的commit重置
+        // 需要重新梳理module的commit映射关系
+        parseModuleCommit(store._modules.root, [rootKey]);
       };
     }
-    const init = getStateData(store._modules.root, [rootKey], true).then(savedState => {
+    parseModuleCommit(store._modules.root, [rootKey]);
+    const init = getStateData(store._modules.root, [rootKey]).then(savedState => {
       store.replaceState(merge(store.state, savedState));
     }).catch(() => {});
     intercept(init);
