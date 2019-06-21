@@ -29,7 +29,7 @@ const storage = (() => {
             return resolve(data);
           }
           // 防止module无保存state而出现报错
-          return resolve(result);
+          return resolve('{}');
         })
       })
     }
@@ -53,6 +53,32 @@ const parseJSON = str => {
 };
 
 const normalizeNamespace = path => `${path.join('/')}/`;
+const normalizeModule = ({commit, namespace, store}) => {
+  if (typeof namespace === 'string' && store) {
+    let module;
+    if (namespace === '') {
+      module = store._modules.root;
+    } else {
+      module = store._modulesNamespaceMap[namespace];
+    }
+    if (module) {
+      const path = [
+        rootKey,
+        ...namespace.split('/').filter(a => a)
+      ];
+      return {module, path};
+    }
+  }
+  if (typeof commit === 'function') {
+    const {module, moduleKey} = moduleWeakMap.get(commit) || {};
+    if (moduleKey) {
+      const path = moduleKey.split('/').filter(a => a);
+      return {module, path};
+    }
+  }
+  return {};
+};
+
 
 const defaultArrayMerge = (target, source) => source;
 
@@ -103,6 +129,23 @@ const getStateData = async function getModuleState(module, storagePath = []) {
   }
 };
 
+const getStateMap = async function getModuleStateMap(module, storagePath = [], output = {}) {
+  const moduleKey = normalizeNamespace(storagePath);
+  const data = await storage.getItem(moduleKey);
+  if (data !== '{}') {
+    output[moduleKey] = data;
+  }
+  const {_children} = module;
+  const children = entries(_children);
+  if (children.length) {
+    await Promise.all(children.map(async ([childKey, child]) => {
+      await getModuleStateMap(child, storagePath.concat(childKey), output);
+    }))
+  }
+  return output;
+};
+
+
 const descriptorFactory = (USE_TAG) => (target, name) => {
   if (!hashTagMap.has(target)) {
     hashTagMap.set(target, USE_TAG);
@@ -130,65 +173,11 @@ const descriptorFactory = (USE_TAG) => (target, name) => {
   };
 };
 
-export const parseModuleCommit = (module, storagePath) => {
-  const moduleKey = normalizeNamespace(storagePath);
-  const {_children, context} = module;
-  const {commit} = context || {};
-  moduleWeakMap.set(commit, {module, moduleKey});
-  entries(_children).forEach(([childKey, child]) => {
-    parseModuleCommit(child, storagePath.concat(childKey));
-  });
-};
-
-/**
- * [根据黑白名单，解析module和state的映射关系]
- * @param  {[type]} module [description]
- * @param  {[type]} state  [description]
- * @return {[type]}        [description]
- */
-export const parseModuleState = (module, state) => {
-  const {_children, state: moduleState} = module;
-  const childrenKeys = Object.keys(_children);
-  const descriptors = getOwnPropertyDescriptors(moduleState);
-  const tag = hashTagMap.get(moduleState) || USE_BLACK_TAG; // 默认黑名单
-  const isWhiteTag = tag & USE_WHITE_TAG;
-  const pureState = fromEntries(entries(state).filter(([stateKey]) => {
-    const {get: getter} = descriptors[stateKey] || {};
-    return !childrenKeys.some(childKey => childKey === stateKey) 
-      && !((isWhiteTag ^ descriptorSet.has(getter)));
-  }));
-  return pureState;
-};
-
 export const shouldWrite = descriptorFactory(USE_WHITE_TAG);
 export const forbidWrite = descriptorFactory(USE_BLACK_TAG);
-
-export const getState = async ({commit, namespace, store}) => {
-  if (typeof namespace === 'string' && store) {
-    let module;
-    if (namespace === '') {
-      module = store._modules.root;
-    } else {
-      module = store._modulesNamespaceMap[namespace];
-    }
-    if (module) {
-      const path = [
-        rootKey,
-        ...namespace.split('/').filter(a => a)
-      ];
-      return getStateData(module, path);
-    }
-  }
-  if (typeof commit === 'function') {
-    const {module, moduleKey} = moduleWeakMap.get(commit) || {};
-    if (moduleKey) {
-      const path = moduleKey.split('/').filter(a => a);
-      return getStateData(module, path);
-    }
-  }
-  return undefined;
-};
-
+/**
+ * action修饰器，根据黑白名单触发storage的setItem操作
+ */
 export const setState = (target, name, descriptor) => {
   const fn = descriptor.value;
   descriptor.value = function(...args) {
@@ -208,23 +197,38 @@ export const setState = (target, name, descriptor) => {
   };
   return descriptor;
 };
+
 /**
- * 根据module，替换storage里的state
+ * 解析各module，moduleKey和commit的关系，并存入moduleWeakMap
  */
-export const replaceModuleState = async function replaceModuleState(module, path, newState) {
-  if (typeof newState !== 'object') {
-    throw new Error(`[weex-vuex-storage]: can\'t replaceModuleState with non-object`);
-  }
-  if (module) {
-    const pureState = parseModuleState(module, newState);
-    await storage.setItem(normalizeNamespace([rootKey, ...path]), JSON.stringify(pureState));
-    return Promise.all(entries(module._children).map(async ([childKey, child]) => {
-      return await replaceModuleState(child, [...path, childKey], newState[childKey] || {});
-    }));
-  }
+export const parseModuleCommit = (module, storagePath) => {
+  const moduleKey = normalizeNamespace(storagePath);
+  const {_children, context} = module;
+  const {commit} = context || {};
+  moduleWeakMap.set(commit, {module, moduleKey});
+  entries(_children).forEach(([childKey, child]) => {
+    parseModuleCommit(child, storagePath.concat(childKey));
+  });
+};
+
+/**
+ * 根据黑白名单，获取当前module的state，不包括子模块的state
+ */
+export const parseModuleState = (module, state) => {
+  const {_children, state: moduleState} = module;
+  const childrenKeys = Object.keys(_children);
+  const descriptors = getOwnPropertyDescriptors(moduleState);
+  const tag = hashTagMap.get(moduleState) || USE_BLACK_TAG; // 默认黑名单
+  const isWhiteTag = tag & USE_WHITE_TAG;
+  const pureState = fromEntries(entries(state).filter(([stateKey]) => {
+    const {get: getter} = descriptors[stateKey] || {};
+    return !childrenKeys.some(childKey => childKey === stateKey) 
+      && !((isWhiteTag ^ descriptorSet.has(getter)));
+  }));
+  return pureState;
 };
 /**
- * 替换Vuex里module的state
+ * 设置store里module的state
  * 若无newState，则取storage
  */
 export const setModuleState = async (store, path, newState) => {
@@ -248,6 +252,45 @@ export const setModuleState = async (store, path, newState) => {
   setChildModuleState(module, newState);
 };
 
+/**
+ * 根据module，获取storage里的数据对象，包括子模块
+ */
+export const getState = async ({commit, namespace, store}) => {
+  const {module, path} = normalizeModule({commit, namespace, store});
+  if (module && path) {
+    return getStateData(module, path);
+  }
+  return undefined;
+};
+/**
+ * 根据module，获取storage里存储的数据键值对，包括子模块
+ * 用以保存storage快照用
+ */
+export const getModuleMap = async ({commit, namespace, store}) => {
+  const {module, path} = normalizeModule({commit, namespace, store});
+  if (module && path) {
+    return getStateMap(module, path);
+  }
+  return undefined;
+};
+/**
+ * 根据store的path，设置模块对应的storage数据
+ */
+export const replaceModuleState = async function replaceModuleState(module, path, newState) {
+  if (typeof newState !== 'object') {
+    throw new Error(`[weex-vuex-storage]: can\'t replaceModuleState with non-object`);
+  }
+  if (module) {
+    const pureState = parseModuleState(module, newState);
+    await storage.setItem(normalizeNamespace([rootKey, ...path]), JSON.stringify(pureState));
+    return Promise.all(entries(module._children).map(async ([childKey, child]) => {
+      return await replaceModuleState(child, [...path, childKey], newState[childKey] || {});
+    }));
+  }
+};
+/**
+ * 根据store的path，清空模块对应的storage数据
+ */
 export const removeModuleState = async (store, path) => {
   const namespace = path.length ? normalizeNamespace(path) : '';
   const module = store._modulesNamespaceMap[namespace];
@@ -264,6 +307,17 @@ export const removeModuleState = async (store, path) => {
     await storage.removeItem(key);
   }));
 };
+
+export const loadStore = async (store, path, snapshot) => {
+  // 清空原数据
+  await removeModuleState(store, path);
+  // 保存快照数据
+  await Promise.all(entries(snapshot).map(async ([key, value]) => {
+    return await storage.setItem(key, value);
+  }))
+  // 重置store
+  await setModuleState(store, path);
+}
 
 export const createStatePlugin = (option = {}) => {
   const {key, intercept = registerInterceptor, supportRegister = false} = option;
