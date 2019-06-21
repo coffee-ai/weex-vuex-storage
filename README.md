@@ -55,17 +55,47 @@ const module = {
 也可以手动获取storage中的数据
 
 **view.vue**
+
 ```javascript
 import {getState} from 'weex-vuex-storage';
 export default {
   methods: {
     // module A storage data
-    getState({
-      namespace: 'A/',
-      store: this.$store
-    }).then(state => {
-      console.log(state);
-    })
+    getStateData() {
+      getState({
+        namespace: 'A/',
+        store: this.$store
+      }).then(state => {
+        console.log(state);
+      })
+    }
+  }
+}
+```
+
+获取storage快照数据，导入快照数据至storage并同步更新module的state
+
+**view.vue**
+
+```javascript
+import {getModuleMap, loadStore} from 'weex-vuex-storage';
+export default {
+  methods: {
+    getStorageSnapshot() {
+      // 获取快照数据
+      getModuleMap({
+        namespace: 'A/',
+        store: this.$store
+      }).then((snapshot) => {})
+    },
+    loadSnapshot() {
+      // 导入快照数据，并更新对应state
+      // 快照数据可由getModuleMap导出，key由createStatePlugin时填写
+      loadStore(this.$store, ['A'], {
+        `${key}/A/`: '{"a": 1}',
+        `${key}/A/B`: '{"b": "foo"}'
+      }).then(() => {})
+    }
   }
 }
 ```

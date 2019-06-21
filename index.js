@@ -237,6 +237,7 @@ export const setModuleState = async (store, path, newState) => {
   // 收集commit与module的映射关系
   parseModuleCommit(module, [rootKey, ...path]);
   newState = newState || await getStateData(module, [rootKey, ...path]);
+  // TODO 根据newState进行state的全量更新替换
   const setChildModuleState = function setChildModuleState(_module, _state) {
     const {_children, state} = _module;
     const childrenKeys = Object.keys(_children);
