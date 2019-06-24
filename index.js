@@ -144,7 +144,51 @@ const getStateMap = async function getModuleStateMap(module, storagePath = [], o
   }
   return output;
 };
-
+/**
+ * 将键值对快照转成数据对象结构
+ */
+const normalizeStateFromSnapshot = (store, path, snapshot) => {
+  const rootPathString = normalizeNamespace([rootKey, ...path]);
+  const {[rootPathString]: rootValue, ...rest} = snapshot;
+  const length = rootPathString.length;
+  // 找到根节点
+  const output = typeof rootValue === 'string' ? (parseJSON(rootValue) || {}) : {};
+  // 对namespace的长度升序处理，确保先加载父模块数据
+  Object.keys(rest).sort((a, b) => a.length - b.length).forEach(key => {
+    if (key.indexOf(rootPathString) === 0) {
+      const dataPath = key.slice(length).split('/').filter(Boolean);
+      const len = dataPath.length
+      if (len) {
+        const dataValue = rest[key];
+        dataPath.reduce((data, key, index) => {
+          if (index === len - 1) {
+            return (data[key] = parseJSON(dataValue) || {});
+          } else {
+            return data[key] || (data[key] = {});
+          }
+        }, output);
+      }
+    }
+  });
+  return output;
+}
+/**
+ * 获取当前module对应的storage快照keys
+ */
+const getModuleSnapshotKeys = (store, path) => {
+  const namespace = path.length ? normalizeNamespace(path) : '';
+  const module = store._modulesNamespaceMap[namespace];
+  const moduleKeys = [];
+  const collectKeys = function collectKeys(_module, storagePath) {
+    const {_children = {}} = _module;
+    moduleKeys.push(normalizeNamespace(storagePath));
+    entries(_children).forEach(([childKey, childModule]) => {
+      collectKeys(childModule, storagePath.concat(childKey));
+    });
+  };
+  collectKeys(module, [rootKey, ...path]);
+  return moduleKeys;
+};
 
 const descriptorFactory = (USE_TAG) => (target, name) => {
   if (!hashTagMap.has(target)) {
@@ -293,31 +337,33 @@ export const replaceModuleState = async function replaceModuleState(module, path
  * 根据store的path，清空模块对应的storage数据
  */
 export const removeModuleState = async (store, path) => {
-  const namespace = path.length ? normalizeNamespace(path) : '';
-  const module = store._modulesNamespaceMap[namespace];
-  const moduleKeys = [];
-  const removeChildModuleState = function removeChildModuleState(_module, storagePath) {
-    const {_children = {}} = _module;
-    moduleKeys.push(normalizeNamespace(storagePath));
-    entries(_children).forEach(([childKey, childModule]) => {
-      removeChildModuleState(childModule, storagePath.concat(childKey));
-    });
-  };
-  removeChildModuleState(module, [rootKey, ...path]);
+  const moduleKeys = getModuleSnapshotKeys(store, path);
   return Promise.all(moduleKeys.map(async key => {
     await storage.removeItem(key);
   }));
 };
 
-export const loadStore = async (store, path, snapshot) => {
-  // 清空原数据
-  await removeModuleState(store, path);
-  // 保存快照数据
-  await Promise.all(entries(snapshot).map(async ([key, value]) => {
-    return await storage.setItem(key, value);
-  }))
+export const loadStore = async (store, path, snapshot, option = {}) => {
+  /**
+   * 是否只保存到state
+   */
+  const {onlyState = false} = option;
+  if (!onlyState) {
+    const storageKeys = getModuleSnapshotKeys(store, path);
+    const snapshotKeys = Object.keys(snapshot);
+    await Promise.all([
+      // 差集remove
+      ...storageKeys.filter(key => !snapshotKeys.hasOwnProperty(key)).map(async (key) => {
+        return await storage.removeItem(key);
+      }),
+      ...snapshotKeys.map(async (key) => {
+        return storage.setItem(key, snapshot[key]);
+      })
+    ]);
+  }
   // 重置store
-  await setModuleState(store, path);
+  const newState = normalizeStateFromSnapshot(store, path, snapshot);
+  await setModuleState(store, path, newState);
 }
 
 export const createStatePlugin = (option = {}) => {
