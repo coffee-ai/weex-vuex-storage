@@ -353,7 +353,7 @@ export const loadStore = async (store, path, snapshot, option = {}) => {
     const snapshotKeys = Object.keys(snapshot);
     await Promise.all([
       // 差集remove
-      ...storageKeys.filter(key => !snapshotKeys.hasOwnProperty(key)).map(async (key) => {
+      ...storageKeys.filter(key => snapshotKeys.every(a => a !== key)).map(async (key) => {
         return await storage.removeItem(key);
       }),
       ...snapshotKeys.map(async (key) => {
