@@ -347,13 +347,18 @@ export const loadStore = async (store, path, snapshot, option = {}) => {
   /**
    * 是否只保存到state
    */
-  const {onlyState = false} = option;
+  const {onlyState = false, reserveList = [], removeList = []} = option;
   if (!onlyState) {
     const storageKeys = getModuleSnapshotKeys(store, path);
     const snapshotKeys = Object.keys(snapshot);
+    const removeKeys = Array.from(new Set(
+      storageKeys.filter(key => snapshotKeys.every(a => a !== key))
+        .concat(removeList)
+        .filter(key => reserveList.every(a => a !== key))
+    ));
     await Promise.all([
       // 差集remove
-      ...storageKeys.filter(key => snapshotKeys.every(a => a !== key)).map(async (key) => {
+      ...removeKeys.map(async (key) => {
         return await storage.removeItem(key);
       }),
       ...snapshotKeys.map(async (key) => {
