@@ -1,3 +1,18 @@
+## 1.1.19 (2019-07-20)
+
+
+### Features
+
+* loadStore ([6c74238](https://github.com/coffee-ai/weex-vuex-storage/commit/6c74238))
+* 支持storage快照导出和导入 ([f9e7304](https://github.com/coffee-ai/weex-vuex-storage/commit/f9e7304))
+
+
+### Performance Improvements
+
+* 优化loadStore ([725a4b0](https://github.com/coffee-ai/weex-vuex-storage/commit/725a4b0))
+
+
+
 ## 1.1.16 (2019-06-25)
 
 
