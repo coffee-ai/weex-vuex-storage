@@ -12,32 +12,36 @@ let rootKey = 'storage';
 const USE_WHITE_TAG = 1;
 const USE_BLACK_TAG = 2;
 
-const moduleWeakMap = new WeakMap();
+const moduleWeakMap = new Map();
 const hashTagMap = new WeakMap();
 // 存储storage对象的黑白名单
 const descriptorSet = new WeakSet();
 
 const storage = (() => {
-  const _storage = weex.requireModule('storage');
-  const fn = (key) => {
-    return function(...args) {
-      const [callback] = args.slice(-1);
-      const innerArgs = typeof callback === 'function' ? args.slice(0, -1) : args;
-      return new Promise((resolve, reject) => {
-        _storage[key].call(_storage, ...innerArgs, ({result, data}) => {
-          if (result === 'success') {
-            return resolve(data);
-          }
-          // 防止module无保存state而出现报错
-          return resolve('{}');
+  if (typeof weex !== 'undefined' && typeof weex.requireModule === 'function') {
+    const _storage = weex.requireModule('storage');
+    const fn = (key) => {
+      return function(...args) {
+        const [callback] = args.slice(-1);
+        const innerArgs = typeof callback === 'function' ? args.slice(0, -1) : args;
+        return new Promise((resolve, reject) => {
+          _storage[key].call(_storage, ...innerArgs, ({result, data}) => {
+            if (result === 'success') {
+              return resolve(data);
+            }
+            // 防止module无保存state而出现报错
+            return resolve('{}');
+          })
         })
-      })
+      }
+    };
+    return {
+      getItem: fn('getItem'),
+      setItem: fn('setItem'),
+      removeItem: fn('removeItem'),
     }
-  };
-  return {
-    getItem: fn('getItem'),
-    setItem: fn('setItem'),
-    removeItem: fn('removeItem'),
+  } else {
+    return window.localStorage;
   }
 })();
 
@@ -275,7 +279,7 @@ export const parseModuleState = (module, state) => {
  * 设置store里module的state
  * 若无newState，则取storage
  */
-export const setModuleState = async (store, path, newState) => {
+export const setModuleState = async (store, path, newState, isReplace = false) => {
   const namespace = path.length ? normalizeNamespace(path) : '';
   const module = store._modulesNamespaceMap[namespace];
   // 收集commit与module的映射关系
@@ -283,16 +287,31 @@ export const setModuleState = async (store, path, newState) => {
   newState = newState || await getStateData(module, [rootKey, ...path]);
   // TODO 根据newState进行state的全量更新替换
   const setChildModuleState = function setChildModuleState(_module, _state) {
-    const {_children, state} = _module;
+    const {_children, state, _rawModule} = _module;
     const childrenKeys = Object.keys(_children);
-    entries(_state).map(([key, value]) => {
-      // 后续看能否将state修改放到mutation里
-      if (childrenKeys.every(a => a !== key)) {
-        state[key] = value;
-      } else if (_children[key]) {
-        setChildModuleState(_children[key], _state[key]);
+    if (isReplace) {
+      const {state: stateFn} = _rawModule || {};
+      // 函数构造state，便于快照替换数据时回滚到初始值
+      if (typeof stateFn === 'function') {
+        const defaultState = stateFn();
+        _state = mergeObject(defaultState, _state, {isMergeableObject: defaultIsMergeableObject});
+      }
+    }
+    entries(_state).map(([key,]) => {
+      if (_children[key]) {
+        childrenKeys.splice(childrenKeys.indexOf(key), 1);
+        setChildModuleState(_children[key], _state[key] || {});
+      } else if (_state.hasOwnProperty(key)) {
+        // 后续看能否将state修改放到mutation里
+        state[key] = _state[key];
       }
     });
+    if (isReplace) {
+      // 初始化其余模块数据
+      childrenKeys.forEach(key => {
+        setChildModuleState(_children[key], {});
+      })
+    }
   };
   setChildModuleState(module, newState);
 };
@@ -347,7 +366,7 @@ export const loadStore = async (store, path, snapshot, option = {}) => {
   /**
    * 是否只保存到state
    */
-  const {onlyState = false, reserveList = [], removeList = []} = option;
+  const {onlyState = false, reserveList = [], removeList = [], isReplace = true} = option;
   if (!onlyState) {
     const storageKeys = getModuleSnapshotKeys(store, path);
     const snapshotKeys = Object.keys(snapshot);
@@ -368,8 +387,8 @@ export const loadStore = async (store, path, snapshot, option = {}) => {
   }
   // 重置store
   const newState = normalizeStateFromSnapshot(store, path, snapshot);
-  await setModuleState(store, path, newState);
-}
+  await setModuleState(store, path, newState, isReplace);
+};
 
 export const createStatePlugin = (option = {}) => {
   const {key, intercept = registerInterceptor, supportRegister = false} = option;

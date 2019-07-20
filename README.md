@@ -94,6 +94,11 @@ export default {
       loadStore(this.$store, ['A'], {
         `${key}/A/`: '{"a": 1}',
         `${key}/A/B`: '{"b": "foo"}'
+      }, {
+        onlyState: false, // 是否需要覆盖到storage
+        removeList: [], // 需要移除的storage key，只在onlyState为true时生效
+        reserveList: [], // 需要保留的storage key，只在onlyState为true时生效
+        isReplace: true, // 是否全量替换module的state，需要module中的state为函数而非对象
       }).then(() => {})
     }
   }

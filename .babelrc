@@ -1,21 +1,13 @@
 {
   "presets": [
-    ["env",
+    ["@babel/env",
       {
         "modules": false,
         "targets": {
           "browsers": ["> 1%", "last 2 versions", "ie >= 6"]
         }
       }
-    ],
-    "stage-0"
+    ]
   ],
-  "plugins": [
-    ["transform-runtime", {
-      "helpers": false,
-      "polyfill": false,
-      "regenerator": true,
-      "moduleName": "babel-runtime"
-    }]
-  ]
+  "plugins": ["@babel/external-helpers", "@babel/transform-runtime"]
 }
