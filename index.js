@@ -391,9 +391,13 @@ export const loadStore = async (store, path, snapshot, option = {}) => {
 };
 
 export const createStatePlugin = (option = {}) => {
-  const {key, intercept = registerInterceptor, supportRegister = false} = option;
+  const {key, intercept = registerInterceptor, supportRegister = false, beforeCreate = []} = option;
   key && (rootKey = key);
   return function(store) {
+    beforeCreate.forEach(fn => {
+      fn.call(store, store);
+    })
+
     if (supportRegister) {
       const registerModule = store.registerModule;
       const unregisterModule = store.unregisterModule;
