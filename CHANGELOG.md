@@ -1,3 +1,16 @@
+## [1.1.22](https://github.com/coffee-ai/weex-vuex-storage/compare/1.1.20...1.1.22) (2019-08-27)
+
+
+
+## [1.1.20](https://github.com/coffee-ai/weex-vuex-storage/compare/v1.1.19...v1.1.20) (2019-07-28)
+
+
+### Features
+
+* 插件实例化前前置执行器，store为函数入参 ([d82a765](https://github.com/coffee-ai/weex-vuex-storage/commit/d82a765))
+
+
+
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.

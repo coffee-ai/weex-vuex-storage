@@ -8,6 +8,8 @@ import getOwnPropertyDescriptors from 'object.getownpropertydescriptors';
 import entries from 'object.entries';
 
 let rootKey = 'storage';
+let needObserve = true;
+const flushQueue = [];
 
 const USE_WHITE_TAG = 1;
 const USE_BLACK_TAG = 2;
@@ -17,8 +19,11 @@ const hashTagMap = new WeakMap();
 // 存储storage对象的黑白名单
 const descriptorSet = new WeakSet();
 
+const isWeexApp = (() => {
+  return typeof weex !== 'undefined' && typeof weex.requireModule === 'function';
+})();
 const storage = (() => {
-  if (typeof weex !== 'undefined' && typeof weex.requireModule === 'function') {
+  if (isWeexApp) {
     const _storage = weex.requireModule('storage');
     const fn = (key) => {
       return function(...args) {
@@ -148,6 +153,30 @@ const getStateMap = async function getModuleStateMap(module, storagePath = [], o
   }
   return output;
 };
+
+export const getStateFromVuex = function getModuleStateMapFromVuex(store, path, output = {}) {
+  const namespace = normalizeNamespace(path);
+  let module = store._modulesNamespaceMap[namespace];
+  if (!module && path.length > 1) {
+    // 当前module namespaced为false，通过parent的child取
+    const parentModule = store._modulesNamespaceMap[normalizeNamespace(path.slice(0, -1))];
+    module = parentModule.getChild(path[path.length - 1]);
+  }
+  if (module) {
+    const {_children, state} = module;
+    const _state = JSON.stringify(parseModuleState(module, state));
+    if (_state !== '{}') {
+      output[`${rootKey}/${namespace}`] = _state;
+    }
+    const keys = Object.keys(_children);
+    if (keys.length) {
+      keys.forEach((key) => {
+        getModuleStateMapFromVuex(store, path.concat(key), output);
+      })
+    }
+  }
+  return output;
+}
 /**
  * 将键值对快照转成数据对象结构
  */
