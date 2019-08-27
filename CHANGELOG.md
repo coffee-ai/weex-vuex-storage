@@ -1,6 +1,11 @@
 ## [1.1.22](https://github.com/coffee-ai/weex-vuex-storage/compare/1.1.20...1.1.22) (2019-08-27)
 
 
+### Features
+
+* 支持从vuex的state里获取模块数据快照 ([ec402c7](https://github.com/coffee-ai/weex-vuex-storage/commit/ec402c7))
+
+
 
 ## [1.1.20](https://github.com/coffee-ai/weex-vuex-storage/compare/v1.1.19...v1.1.20) (2019-07-28)
 
