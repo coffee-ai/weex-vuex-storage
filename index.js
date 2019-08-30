@@ -22,7 +22,7 @@ const descriptorSet = new WeakSet();
 const isWeexApp = (() => {
   return typeof weex !== 'undefined' && typeof weex.requireModule === 'function';
 })();
-const storage = (() => {
+let storage = (() => {
   if (isWeexApp) {
     const _storage = weex.requireModule('storage');
     const fn = (key) => {
@@ -87,6 +87,15 @@ const normalizeModule = ({commit, namespace, store}) => {
   }
   return {};
 };
+const assertStorage = (_storage) => {
+  if (typeof _storage['removeItem'] === 'function'
+    && typeof _storage['getItem'] === 'function'
+    && typeof _storage['setItem'] === 'function'
+  ) {
+    return true;
+  }
+  throw new Error(`[weex-vuex-storage]: storage should has removeItem, getItem and setItem method`);
+}
 
 
 const defaultArrayMerge = (target, source) => source;
@@ -420,13 +429,20 @@ export const loadStore = async (store, path, snapshot, option = {}) => {
 };
 
 export const createStatePlugin = (option = {}) => {
-  const {key, intercept = registerInterceptor, supportRegister = false, beforeCreate = []} = option;
+  const {
+    key,
+    intercept = registerInterceptor,
+    supportRegister = false,
+    beforeCreate = [],
+  } = option;
   key && (rootKey = key);
+  if (option.storage && assertStorage(option.storage)) {
+    storage = option.storage;
+  }
   return function(store) {
     beforeCreate.forEach(fn => {
       fn.call(store, store);
     })
-
     if (supportRegister) {
       const registerModule = store.registerModule;
       const unregisterModule = store.unregisterModule;
